@@ -24,23 +24,40 @@ class IngestionService:
             chunk_overlap=settings.CHUNK_OVERLAP,
             separators=["\n\n", "\n", ".", " ", ""]
         )
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash", 
-            google_api_key=settings.GEMINI_API_KEY,
-            temperature=0
-        )
+        self.model_candidates = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+        self.current_model_idx = 0
+        self._init_llm()
 
+    def _init_llm(self):
+        model_name = self.model_candidates[self.current_model_idx]
+        print(f"DEBUG INGESTION: Initializing LLM with model: {model_name}")
+        self.llm = ChatGoogleGenerativeAI(
+            model=model_name, 
+            google_api_key=settings.GEMINI_API_KEY,
+            temperature=0,
+            max_retries=1
+        )
     def generate_summary(self, text: str) -> str:
         """Generates a 3-bullet point summary of the document text."""
-        try:
-            # Use only the first 5000 chars for summary to be quick
-            sample = text[:5000]
-            prompt = f"Summarize the following document text in exactly 2-3 concise bullet points for an enterprise database overview:\n\n{sample}"
-            response = self.llm.invoke(prompt)
-            return response.content
-        except Exception as e:
-            print(f"Summarization failed: {str(e)}")
-            return "Summary generation unavailable."
+        sample = text[:5000]
+        prompt = f"Summarize the following document text in exactly 2-3 concise bullet points for an enterprise database overview:\n\n{sample}"
+        
+        attempts = 0
+        while attempts < len(self.model_candidates):
+            try:
+                response = self.llm.invoke(prompt)
+                return response.content
+            except Exception as e:
+                attempts += 1
+                print(f"Summarization attempt failed with {self.model_candidates[self.current_model_idx]}: {str(e)}")
+                if "429" in str(e) or "quota" in str(e).lower() or "404" in str(e):
+                    if attempts < len(self.model_candidates):
+                        self.current_model_idx = (self.current_model_idx + 1) % len(self.model_candidates)
+                        self._init_llm()
+                        continue
+                print(f"Summarization completely failed: {str(e)}")
+                return "Summary generation unavailable."
+        return "Summary generation unavailable - Quota exhausted across all models."
 
     def _process_image(self, file_path: str):
         """Uses Gemini Flash 2.0 to extract text from images."""
@@ -62,13 +79,23 @@ class IngestionService:
                 }
             ]
         )
-        try:
-            response = self.llm.invoke([message])
-            text_content = response.content
-            return [Document(page_content=text_content, metadata={"source": file_path})]
-        except Exception as e:
-            print(f"Failed to process image {file_path}: {e}")
-            return [Document(page_content="Error processing image.", metadata={"source": file_path})]
+        
+        attempts = 0
+        while attempts < len(self.model_candidates):
+            try:
+                response = self.llm.invoke([message])
+                text_content = response.content
+                return [Document(page_content=text_content, metadata={"source": file_path})]
+            except Exception as e:
+                attempts += 1
+                if "429" in str(e) or "quota" in str(e).lower() or "404" in str(e):
+                    if attempts < len(self.model_candidates):
+                        self.current_model_idx = (self.current_model_idx + 1) % len(self.model_candidates)
+                        self._init_llm()
+                        continue
+                print(f"Failed to process image {file_path}: {e}")
+                return [Document(page_content="Error processing image.", metadata={"source": file_path})]
+        return [Document(page_content="Error processing image - Quota exhausted across all models.", metadata={"source": file_path})]
 
     def load_document(self, file_path: str):
         ext = os.path.splitext(file_path)[1].lower()

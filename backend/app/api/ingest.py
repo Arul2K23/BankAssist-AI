@@ -1,10 +1,9 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import FileResponse
-from datetime import datetime, timedelta
-from typing import Optional, List
+from datetime import timedelta
+from typing import List
 import shutil
 import os
-import uuid
 from app.services.ingestion import ingestion_service
 from app.services.rag import rag_service
 from app.models.auth import AccessLevel, UserRole

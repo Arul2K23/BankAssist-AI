@@ -1,6 +1,6 @@
 from enum import Enum
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional
 
 class UserRole(str, Enum):
     EXTERNAL_CUSTOMER = "external_customer"

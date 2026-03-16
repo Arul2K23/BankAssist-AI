@@ -1,0 +1,23 @@
+﻿E701 Multiple statements on one line (colon)
+   --> app\services\rag.py:122:44
+    |
+120 |     def rerank(self, query: str, results, top_n: int = 4):
+121 |         self._initialize()
+122 |         if not results or not self.reranker: return results[:top_n]
+    |                                            ^
+123 |         try:
+124 |             valid_results = [r for r in results if hasattr(r, 'payload') and r.payload]
+    |
+
+E701 Multiple statements on one line (colon)
+   --> app\services\rag.py:126:25
+    |
+124 |             valid_results = [r for r in results if hasattr(r, 'payload') and r.payload]
+125 |             texts = [r.payload["text"] for r in valid_results]
+126 |             if not texts: return results[:top_n]
+    |                         ^
+127 |             pairs = [[query, txt] for txt in texts]
+128 |             scores = self.reranker.predict(pairs)
+    |
+
+Found 2 errors.

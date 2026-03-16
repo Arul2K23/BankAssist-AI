@@ -3,7 +3,6 @@ from typing import List, Dict, Any
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from sentence_transformers import SentenceTransformer, CrossEncoder
-import traceback
 from langchain_google_genai import ChatGoogleGenerativeAI
 from app.core.config import settings
 from app.models.auth import ROLE_ACCESS_MAPPING, UserRole
@@ -19,6 +18,20 @@ except Exception:
 
 class RAGService:
     def __init__(self):
+        self._initialized = False
+        self.qdrant = None
+        self.local_client = None
+        self.embed_model = None
+        self.llm = None
+        self.answer_cache = {}
+        self.reranker = None
+        self.model_candidates = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+        self.current_model_idx = 0
+        
+    def _initialize(self):
+        if self._initialized:
+            return
+            
         if settings.GEMINI_API_KEY:
             print(f"DEBUG: Gemini API Key loaded (starts with {settings.GEMINI_API_KEY[:4]}...)")
             os.environ["GOOGLE_API_KEY"] = settings.GEMINI_API_KEY
@@ -29,17 +42,10 @@ class RAGService:
         self.ensure_collection()
         self.embed_model = SentenceTransformer(settings.EMBEDDING_MODEL)
         
-        # Reliability Layer: Failover models
-        self.model_candidates = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
-        self.current_model_idx = 0
-        
         self._init_llm()
         
-        # Reliability Layer: Semantic Cache
-        self.answer_cache = {}
-        
-        # Initialize Re-ranker
         self.reranker = CrossEncoder(settings.RERANKER_MODEL)
+        self._initialized = True
 
     def _init_llm(self):
         model_name = self.model_candidates[self.current_model_idx]
@@ -62,6 +68,7 @@ class RAGService:
             )
 
     def upsert_documents(self, chunks: List[Dict[str, Any]]):
+        self._initialize()
         self.ensure_collection()
         points = []
         for chunk in chunks:
@@ -74,6 +81,7 @@ class RAGService:
         self.local_client.upsert(collection_name=settings.QDRANT_COLLECTION, points=points)
 
     def delete_by_doc_id(self, doc_id: int):
+        self._initialize()
         try:
             self.local_client.delete(
                 collection_name=settings.QDRANT_COLLECTION,
@@ -89,6 +97,7 @@ class RAGService:
             return False
 
     def retrieve(self, query: str, user_role: UserRole, top_k: int = 10):
+        self._initialize()
         query_vector = self.embed_model.encode(query).tolist()
         allowed_levels = ROLE_ACCESS_MAPPING.get(user_role, ["public"])
         
@@ -109,11 +118,14 @@ class RAGService:
             return []
 
     def rerank(self, query: str, results, top_n: int = 4):
-        if not results or not self.reranker: return results[:top_n]
+        self._initialize()
+        if not results or not self.reranker:
+            return results[:top_n]
         try:
             valid_results = [r for r in results if hasattr(r, 'payload') and r.payload]
             texts = [r.payload["text"] for r in valid_results]
-            if not texts: return results[:top_n]
+            if not texts:
+                return results[:top_n]
             pairs = [[query, txt] for txt in texts]
             scores = self.reranker.predict(pairs)
             scored_results = sorted(zip(scores, valid_results), key=lambda x: x[0], reverse=True)
@@ -123,6 +135,7 @@ class RAGService:
             return results[:top_n]
 
     async def generate_answer(self, query: str, context_chunks: List[Any]):
+        self._initialize()
         cache_key = query.lower().strip()
         if cache_key in self.answer_cache:
             print("JATAYU_DEBUG: Serving from Semantic Cache")
@@ -158,8 +171,10 @@ Question: {query}
                 return result
             except Exception as e:
                 attempts += 1
-                if "429" in str(e) or "quota" in str(e).lower():
-                    print(f"DEBUG: Cache miss or quota issue. Rotating model...")
+                if "429" in str(e) or "quota" in str(e).lower() or "404" in str(e):
+                    if attempts >= len(self.model_candidates):
+                        break
+                    print("DEBUG: Cache miss or quota issue. Rotating model...")
                     self.current_model_idx = (self.current_model_idx + 1) % len(self.model_candidates)
                     self._init_llm()
                     continue

@@ -4,9 +4,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 from app.services.rag import rag_service
-from app.models.auth import UserRole
 from app.core.auth_utils import get_current_active_user
-from app.db.models import DBUser, DBAuditLog, DBChatMessage
+from app.db.models import DBUser, DBChatMessage
 from app.db.session import get_db
 from sqlalchemy.orm import Session
 
@@ -59,28 +58,8 @@ async def chat_query(
         if "error" in response:
             if response["error"] in ["quota_exceeded", "ai_unavailable_using_direct_extract"]:
                 # Still return 200 but with the descriptive/fallback answer
-                try:
-                    log_entry = DBAuditLog(
-                        user_id=current_user.id,
-                        username=current_user.username,
-                        query=request.query,
-                        answer_preview=response["answer"][:200]
-                    )
-                    db.add(log_entry)
-                    db.commit()
-                except: pass
                 return response
             
-        try:
-            log_entry = DBAuditLog(
-                user_id=current_user.id,
-                username=current_user.username,
-                query=request.query,
-                answer_preview=response["answer"][:200]
-            )
-            db.add(log_entry)
-            db.commit()
-        except: pass
         # 4. Save Bot Message with Sources
         bot_msg = DBChatMessage(
             user_id=current_user.id, 

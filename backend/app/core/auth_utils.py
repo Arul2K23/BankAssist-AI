@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Optional, Any
+from typing import Optional
 from jose import jwt
 import bcrypt
 from fastapi import Depends, HTTPException, status
