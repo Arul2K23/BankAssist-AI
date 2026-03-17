@@ -1,7 +1,7 @@
 import os
 import uuid
 from typing import List, Dict, Any
-from langchain.schema import Document
+from langchain_core.documents import Document
 from langchain_community.document_loaders import (
     PyPDFLoader, 
     UnstructuredWordDocumentLoader, 
@@ -37,6 +37,28 @@ class IngestionService:
             temperature=0,
             max_retries=1
         )
+    def _extract_text(self, raw_content) -> str:
+        import json
+        if isinstance(raw_content, list):
+            # NEW: Check if the list actually has items before grabbing index 0
+            if len(raw_content) > 0:
+                return raw_content[0].get('text', str(raw_content))
+            return "No content returned."
+            
+        elif isinstance(raw_content, str):
+            try:
+                parsed_content = json.loads(raw_content)
+                if isinstance(parsed_content, list):
+                    # NEW: Check if the parsed list actually has items
+                    if len(parsed_content) > 0:
+                        return parsed_content[0].get('text', raw_content)
+                    return "No content returned."
+                else:
+                    return raw_content
+            except json.JSONDecodeError:
+                return raw_content
+        return str(raw_content)
+
     def generate_summary(self, text: str) -> str:
         """Generates a 3-bullet point summary of the document text."""
         sample = text[:5000]
@@ -46,7 +68,7 @@ class IngestionService:
         while attempts < len(self.model_candidates):
             try:
                 response = self.llm.invoke(prompt)
-                return response.content
+                return self._extract_text(response.content)
             except Exception as e:
                 attempts += 1
                 print(f"Summarization attempt failed with {self.model_candidates[self.current_model_idx]}: {str(e)}")
@@ -84,7 +106,7 @@ class IngestionService:
         while attempts < len(self.model_candidates):
             try:
                 response = self.llm.invoke([message])
-                text_content = response.content
+                text_content = self._extract_text(response.content)
                 return [Document(page_content=text_content, metadata={"source": file_path})]
             except Exception as e:
                 attempts += 1

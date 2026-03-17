@@ -166,7 +166,30 @@ Question: {query}
         while attempts < len(self.model_candidates):
             try:
                 response = await self.llm.ainvoke(prompt)
-                result = {"answer": response.content, "sources": sources}
+                raw_content = response.content
+                answer_text = ""
+
+                # 1. If it's already a standard list of dictionaries
+                if isinstance(raw_content, list):
+                    answer_text = raw_content[0].get('text', str(raw_content))
+
+                # 2. If it's a string, we need to check if it's hidden JSON
+                elif isinstance(raw_content, str):
+                    try:
+                        # Try to parse it as JSON
+                        parsed_content = json.loads(raw_content)
+                        if isinstance(parsed_content, list):
+                            answer_text = parsed_content[0].get('text', raw_content)
+                        else:
+                            answer_text = raw_content
+                    except json.JSONDecodeError:
+                        # It's just a normal string, safe to use!
+                        answer_text = raw_content
+
+                # Fallback for anything weird
+                else:
+                    answer_text = str(raw_content)
+                result = {"answer": answer_text, "sources": sources}
                 self.answer_cache[cache_key] = result
                 return result
             except Exception as e:

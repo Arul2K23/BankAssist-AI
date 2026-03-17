@@ -64,7 +64,7 @@ async def chat_query(
         bot_msg = DBChatMessage(
             user_id=current_user.id, 
             role="bot", 
-            content=response["answer"],
+            content=json.dumps(response["answer"]),
             sources=json.dumps(response.get("sources", []))
         )
         db.add(bot_msg)
