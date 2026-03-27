@@ -187,12 +187,12 @@ const Sidebar = ({
                           <p className={`text-[11px] font-bold truncate transition-colors ${
                             isActive ? 'text-white' : 'text-white/40 group-hover:text-white/60'
                           }`}>
-                            {formatSessionDate(session.started_at)}
+                            {session.title || 'New conversation…'}
                           </p>
                           <p className={`text-[10px] mt-0.5 transition-colors ${
                             isActive ? 'text-accent/60' : 'text-white/20 group-hover:text-white/35'
                           }`}>
-                            {session.message_count} message{session.message_count !== 1 ? 's' : ''}
+                            {formatSessionDate(session.started_at)} · {session.message_count} msg{session.message_count !== 1 ? 's' : ''}
                           </p>
                         </div>
                         {isActive && (

@@ -425,13 +425,39 @@ class RAGService:
 
         prompt = f"""You are BankAssist AI, a strict Banking Operations Specialist.
 
-STRICT RULES:
-1. Answer ONLY using the Banking Context below — never use outside knowledge.
-2. If the context does not contain enough information to answer the question,
-   respond with exactly:
+━━━ STRICT CONTENT RULES ━━━
+1. Answer ONLY using the Banking Context provided below — never use outside knowledge.
+2. If the context does not contain enough information, respond with exactly:
    "BankAssist AI: I don't have enough information to answer that question based on the available documents."
 3. Do NOT guess, infer, or extrapolate beyond what the context explicitly states.
-4. Cite every fact as [Source X] where X is the source number.{history_block}
+4. Cite every fact inline as [Source X] where X is the source number.
+
+━━━ STRICT FORMAT RULES ━━━
+Detect the question type and apply the matching format — do NOT mix formats:
+
+TYPE A — PROCEDURE / STEPS (how-to, process, workflow):
+  Use a numbered list. Each step on its own line. Example:
+  1. First, do X [Source 1].
+  2. Then do Y [Source 2].
+  3. Finally, do Z [Source 1].
+
+TYPE B — COMPARISON / LIST of ITEMS (fees, limits, products, options):
+  Use a clean bullet list. One item per line. Example:
+  • Savings Account minimum balance: ₹1,000 [Source 1]
+  • Current Account minimum balance: ₹5,000 [Source 2]
+
+TYPE C — FACTUAL / EXPLANATORY (what is, define, explain, policy):
+  Use short paragraphs (2–4 sentences each). No bullets. No numbering.
+  Separate paragraphs with a blank line.
+
+TYPE D — SINGLE-FACT / YES-NO:
+  Answer in one sentence. No lists.
+
+GENERAL FORMATTING:
+  - Never mix bullets and numbered lists in the same answer.
+  - Do not use bold, markdown headers, or asterisks — plain text only.
+  - Keep answers concise: do not repeat context verbatim.
+  - End every answer with a blank line then: "Sources: [list the source filenames used]"{history_block}
 
 Banking Context:
 {context_text}
@@ -467,6 +493,19 @@ Answer:"""
         """
         self.answer_cache.clear()
         print("DEBUG RAG: Answer cache cleared.")
+        
+    async def generate_session_title(self, first_message: str) -> str:
+        """Called once when a session's first message is sent."""
+        self._initialize()
+        prompt = f"""Generate a short 3-6 word title for a chat session that starts with this question.
+    Output ONLY the title, no quotes, no punctuation at the end.
 
+    Question: {first_message}
 
+    Title:"""
+        try:
+            title = await self.llm_router.ainvoke(prompt)
+            return title.strip()[:60]   # cap at 60 chars
+        except Exception:
+            return first_message[:50]   # fallback to truncated question
 rag_service = RAGService()
