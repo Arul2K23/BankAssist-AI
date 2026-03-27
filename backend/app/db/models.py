@@ -44,3 +44,4 @@ class DBChatMessage(Base):
     content = Column(String)
     sources = Column(String, nullable=True) # JSON string of sources
     timestamp = Column(DateTime, server_default=func.now())
+    session_id = Column(String, nullable=True, index=True)

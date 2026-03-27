@@ -30,6 +30,7 @@ async def list_documents(
     Returns the real list of documents from the database.
     """
     docs = db.query(DBDocument).order_by(DBDocument.uploaded_at.desc()).all()
+    print(docs)
     return [
         {
             "id": doc.id,
@@ -80,7 +81,7 @@ async def upload_document(
             "parent_doc_id": db_doc.id # Crucial for future deletion
         }
     )
-    
+    rag_service.clear_cache()
     return {"message": f"Successfully uploaded {file.filename}.", "filename": file.filename}
 
 async def process_and_index(file_path: str, doc_id: int, metadata: dict):
